@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>YouTube Embed Player</title>
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: rgba(0, 0, 0, 0);
+    }
+    iframe {
+        
+        border-radius: 20px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        transition: all 0.4s ease;
+    }
+    #player {
+        /*border: solid 20px #37474F;*/
+        overflow-clip-margin: content-box !important;
+        overflow: clip !important;
+        border-radius: 24px;
+        /*background: linear-gradient(135deg, #FF6D00, #FFD600);*/
+        box-shadow: 0 0 12px rgba(255, 109, 0, 0.3);
+    }
+    /*#playerWrapper {
+        position: absolute;
+        /*top: 50%;
+        left: 50%;*/
+        /*transform: translate(-50%, -50%); /* default center */
+        /*transition: all 0.6s ease-in-out;
+        z-index: 1000;
+    }*/
+    #playerWrapper {
+        position: absolute;
+        /*transition: top 0.5s ease, left 0.5s ease;*/
+        transition: all 0.6s ease-in-out;
+        border-radius: 20px;
+        overflow: hidden;
+    }
+    #playerWrapper.fullscreen {
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        transform: none !important;
+        transition: all 0.6s ease-in-out;
+        z-index: 9998;
+    }
+    #playerWrapper.hidden {
+        visibility: hidden;
+        transition: all 0.6s ease-in-out;
+    }
+    #TogleBtn {
+        position: absolute;
+        z-index: 9999;
+    }
+    #playerWrapper.fullscreen #player {
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        background: none !important;
+    }
+    #playerWrapper.fullscreen iframe {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
+</style>
+<script src="https://unpkg.com/@streamerbot/client/dist/streamerbot-client.js"></script>
+</head>
+<body>
+    <div id="playerWrapper">
+        <div id="player"></div>
+    </div>
+    <!-- <div id="player">
+    </div> -->
+    <!-- <div id="playerMessage"><button id="TogleBtn" onclick="toggleFullscreen()">🔁 Розгорнути</button><h1></h1></div> -->
+
+    <script type="text/javascript">
+
+        /*     НАЛАШТУВАННЯ ПЛЕЄРА     */
+        const hideActionId = 'd7417363-d4d6-4ad6-a892-93ec4b391609';    // 🔁 Встав свій ID
+        let playerWidth = 1000;                                         // 🔁 Ширина зображення (портретна)
+        let playerHeight = 1780;                                        // 🔁 Висота зображення (портретна)
+        /*  Декілька варіантів розмірів зображення                   */
+        /*  Ширина = 540 Висота = 960, Ширина = 1000 Висота = 1780   */
+
+
+        /*     ЗМІННІ ДЛЯ ПОДАЛЬШОЇ РОБОТИ СКРИПТА     */
+        var client;
+        let response;
+        let responseVideoId;
+
+        let videoId;
+        let embedUrl = '';
+        let isVideo = true;
+        let isFullscreen = false;
+        let isPaused = false;
+        let previousPosition = {};
+        let videoQueue = [];
+        let isPlaying = false;
+
+        client = new StreamerbotClient({
+            host: 'localhost',
+            port: 8080,
+            secure: false,
+            debug: true,
+            /*subscribe: [
+                "Follow"
+            ]*/
+           onConnect: () => {
+                console.log("✅ Підключено до Streamer.bot")
+                //fetchGlobals()
+                //fetchGlobalVariables()
+           },
+           onDisconnect: () => {
+                console.warn("⚠️ Відключено від Streamer.bot")
+           }
+        });
+
+        async function fetchGlobals(){
+            var respGlobals = await client.getGlobals();
+            console.log(respGlobals);
+            //console.log(`Steamer.bot event received: NAME:${respGlobals.variables.data.name}`);
+        }
+
+        /*client.on('Twitch.ChatMessage', (data) => {
+            // Do something with Twitch Chat data...
+            console.log('Twitch Chat:', data);
+        });*/
+
+        client.on('Misc.GlobalVariableUpdated', (data) => {
+            console.log('Global Variable:', data);
+            console.log('Global Variable:', data.data.name);
+            if (data.data.name === "embedUrl") {
+                const newVideoId = data.data.newValue;
+                videoQueue.push(newVideoId);
+                if (!isPlaying) {
+                    playNextInQueue();
+                }
+            }else if (data.data.name == "fullScreen") {
+                toggleFullscreen();
+            }else if (data.data.name == "playerPosition") {
+                updatePlayerPosition();
+            }else if (data.data.name == "playerPaused") {
+                playerPauseToggle();
+            }
+        });
+
+        var tag = document.createElement("script");
+        tag.id = 'iframe-demo';
+        tag.src = "https://www.youtube.com/iframe_api";
+        var firstScriptTag = document.getElementsByTagName("script")[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        
+        var player;
+        function onYouTubeIframeAPIReady() {
+
+            player = new YT.Player("player", {
+            height: "1780",
+            width: "1000",
+            //height: "1080",
+            //width: "610",
+            playerVars: {
+                autoplay: 1,
+                mute: 0,
+                controls: 0,
+                modestbranding: 1,
+                rel: 0,
+                showinfo: 0
+            },
+            events: {
+                'onReady': onPlayerReady,
+                'onStateChange': onPlayerStateChange,
+                'onError': onPlayerError
+            }
+            });
+
+            //fetchGlobalVariables();
+            //updatePlayerPosition();
+            //collapsePlayer();
+        }
+
+        function onPlayerReady(event) {
+            document.getElementById('player').style.borderColor = '#FF6D00';
+            fetchGlobalVariables();
+            //updatePlayerPosition();
+        }
+
+        function changeBorderColor(playerStatus) {
+            var color;
+            if (playerStatus == -1) {
+                color = "#37474F"; // unstarted = gray
+            } else if (playerStatus == 0) {
+                color = "#FFFF00"; // ended = yellow
+            } else if (playerStatus == 1) {
+                color = "#33691E"; // playing = green
+            } else if (playerStatus == 2) {
+                color = "#DD2C00"; // paused = red
+            } else if (playerStatus == 3) {
+                color = "#AA00FF"; // buffering = purple
+            } else if (playerStatus == 5) {
+                color = "#FF6DOO"; // video cued = orange
+            }
+            if (color) {
+            document.getElementById('player').style.borderColor = color;
+            }
+        }
+
+        function onPlayerStateChange(event) {
+            //changeBorderColor(event.data);
+            if (event.data === YT.PlayerState.ENDED) {
+                //onExecuteAction();
+                isPlaying = false;
+                playNextInQueue();
+            }
+        }
+
+        function onPlayerError(event) {
+
+        }
+
+        function addToQueue(videoId) {
+            videoQueue.push(videoId);
+            console.log("🧾 Додано до черги:", videoId);
+            if (!isPlaying) {
+                playNextInQueue();
+            }
+        }
+
+        function playNextInQueue() {
+            if (videoQueue.length === 0) {
+                console.log("⏹️ Черга порожня");
+                isPlaying = false;
+                //onExecuteAction();  // Приховати плеєр
+                return;
+            }
+
+            const nextVideo = videoQueue.shift();
+            console.log("▶️ Відтворення відео:", nextVideo);
+
+            player.loadVideoById(nextVideo);
+            isPlaying = true;
+
+            // Показати плеєр
+            const wrapper = document.getElementById("playerWrapper");
+            wrapper.classList.remove("hidden");
+        }
+        
+        async function onExecuteAction() {
+            response = await client.doAction(hideActionId);
+        }
+
+        async function fetchGlobalVariables() {
+            let width = playerWidth;
+            let height = playerHeight;
+
+            console.log("🔍 Отримання посилання на відео");
+            try {
+                embedUrl = await client.getGlobal('embedUrl');
+                isVideo = await client.getGlobal('embedIsVideoOrShorts');
+                embedUrl = embedUrl.variable.value;
+                console.log("✅ Посилання на відео отримано:", embedUrl);
+                console.log("🎞️ Тип зображення:", isVideo ? "Video" : "Shorts");
+            }
+            catch (error){
+                console.error("🚫 Помилка отримання посилання або типу зображення: ", error);
+            }
+
+            if (isVideo.variable.value == true) {
+                width = playerHeight;
+                height = playerWidth;
+            }
+            player.setSize(width, height);
+
+            const wrapper = document.getElementById("playerWrapper");
+            wrapper.style.width = width + "px";
+            wrapper.style.height = height + "px";
+
+            //window.addEventListener('resize', updatePlayerPosition);
+
+            player.loadVideoById(embedUrl, 0, "large");
+
+            updatePlayerPosition();
+        }
+
+        async function updatePlayerPosition() {
+            try {
+                const posResp = await client.getGlobal("playerPosition");
+                const pos = posResp?.variable?.value || "top-right";
+
+                const wrapper = document.getElementById("playerWrapper");
+                const playerWidth = wrapper.offsetWidth;
+                const playerHeight = wrapper.offsetHeight;
+                const screenWidth = window.innerWidth;
+                const screenHeight = window.innerHeight;
+
+                let top = 20;
+                let left = 20;
+
+                switch (pos) {
+                    case "top-left":
+                        top = 20;
+                        left = 20;
+                        break;
+                    case "top-center":
+                        top = 20;
+                        left = (screenWidth - playerWidth) / 2;
+                        break;
+                    case "top-right":
+                        top = 20;
+                        left = screenWidth - playerWidth - 20;
+                        break;
+
+                    case "center-left":
+                        top = (screenHeight - playerHeight) / 2;
+                        left = 20;
+                        break;
+                    case "center":
+                        top = (screenHeight - playerHeight) / 2;
+                        left = (screenWidth - playerWidth) / 2;
+                        break;
+                    case "center-right":
+                        top = (screenHeight - playerHeight) / 2;
+                        left = screenWidth - playerWidth - 20;
+                        break;
+
+                    case "bottom-left":
+                        top = screenHeight - playerHeight - 20;
+                        left = 20;
+                        break;
+                    case "bottom-center":
+                        top = screenHeight - playerHeight - 20;
+                        left = (screenWidth - playerWidth) / 2;
+                        break;
+                    case "bottom-right":
+                        top = screenHeight - playerHeight - 20;
+                        left = screenWidth - playerWidth - 20;
+                        break;
+                }
+
+                wrapper.style.top = `${top}px`;
+                wrapper.style.left = `${left}px`;
+            } catch (e) {
+                console.error("❌ Помилка позиціювання плеєра:", e);
+            }
+        }
+
+        async function toggleFullscreen() {
+            try {
+                let getFullscreen = await client.getGlobal("fullScreen");
+                isFullscreen = getFullscreen?.variable?.value
+            } catch (e) {
+                console.error("❌ Помилка отримання повномаштабності плеєра:", e);
+            }
+
+            if (!isFullscreen) {
+                expandPlayer();
+            } else {
+                collapsePlayer();
+            }
+
+            isFullscreen = !isFullscreen;
+        }
+
+        async function playerPauseToggle() {
+            try {
+                const getPaused = await client.getGlobal("playerPaused");
+                const isPaused = getPaused?.variable?.value;
+
+                const wrapper = document.getElementById("playerWrapper");
+
+                if (isPaused === "true" || isPaused === true) {
+                    player.pauseVideo?.();
+                    wrapper.classList.add("hidden");
+                } else {
+                    player.playVideo?.();
+                    wrapper.classList.remove("hidden");
+                }
+            } catch (e) {
+                console.error("❌ Помилка перемикання паузи плеєра:", e);
+            }
+        }
+
+       /* async function playerPauseToogle() {
+            try {
+                let getPaused = await client.getGlobal("playerPaused");
+                isPaused = getPaused?.variable?.value
+            } catch (e) {
+                console.error("❌ Помилка отримання статусу паузи плеєра:", e);
+            }
+            player.pauseVideo(isPaused);
+            const wrapper = document.getElementById("playerWrapper");
+            wrapper.classList.add("hidden");
+        }*/
+
+        function expandPlayer() {
+            const wrapper = document.getElementById("playerWrapper");
+            const player = document.getElementById("player");
+
+            // Зберігаємо поточні координати
+            previousPosition = {
+                top: wrapper.style.top,
+                left: wrapper.style.left,
+                width: wrapper.offsetWidth + "px",
+                height: wrapper.offsetHeight + "px"
+            };
+
+            wrapper.classList.add("fullscreen");
+            wrapper.style.top = "0";
+            wrapper.style.left = "0";
+            wrapper.style.width = "100vw";
+            wrapper.style.height = "100vh";
+            player.style.width = "100%";
+            player.style.height = "100%";
+        }
+
+        function collapsePlayer() {
+            const wrapper = document.getElementById("playerWrapper");
+
+            wrapper.classList.remove("fullscreen");
+
+            // Повертаємо попередні координати
+            wrapper.style.top = previousPosition.top;
+            wrapper.style.left = previousPosition.left;
+            wrapper.style.width = previousPosition.width;
+            wrapper.style.height = previousPosition.height;
+        }
+    </script>
+  </body>
+</html>
